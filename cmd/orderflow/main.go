@@ -4,18 +4,32 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"unicode/utf8"
 
+	"github.com/Fortrend96/orderflow/internal/catalog"
 	"github.com/Fortrend96/orderflow/internal/pricing"
 )
 
 func main() {
-	price := flag.Int64(
+	skuFlag := flag.String(
+		"sku",
+		"COFFEE01",
+		"Product SKU: 8 uppercase ASCII letters or digits",
+	)
+
+	nameFlag := flag.String(
+		"name",
+		"Кофе",
+		"Product name",
+	)
+
+	priceFlag := flag.Int64(
 		"price",
 		0,
 		"Unit price in kopecks",
 	)
 
-	quantity := flag.Int64(
+	quantityFlag := flag.Int64(
 		"quantity",
 		1,
 		"Number of items",
@@ -23,9 +37,10 @@ func main() {
 
 	flag.Parse()
 
-	total, err := pricing.CalculateLineTotal(
-		*price,
-		*quantity,
+	product, err := catalog.NewProduct(
+		*skuFlag,
+		*nameFlag,
+		*priceFlag,
 	)
 
 	if err != nil {
@@ -33,9 +48,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	rubles := total / 100
-	kopecks := total % 100
+	total, err := pricing.CalculateLineTotal(
+		product.UnitPriceKopecks,
+		*quantityFlag,
+	)
 
-	// fmt.Printf("Total: %d kopecks\n", total)
-	fmt.Printf("Total: %d.%d RUB", rubles, kopecks)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("SKU: %s\n", product.SKU.String())
+	fmt.Printf("Name: %s\n", product.Name)
+	fmt.Printf("Name bytes: %d\n", len(product.Name))
+	fmt.Printf(
+		"Name runes: %d\n",
+		utf8.RuneCountInString(product.Name),
+	)
+	fmt.Printf("Total: %d kopecks\n", total)
 }
