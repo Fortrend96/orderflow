@@ -4,17 +4,16 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"unicode/utf8"
 
 	"github.com/Fortrend96/orderflow/internal/catalog"
 	"github.com/Fortrend96/orderflow/internal/pricing"
 )
 
-func main() {
+func run() error {
 	skuFlag := flag.String(
 		"sku",
 		"COFFEE01",
-		"Product SKU: 8 uppercase ASCII letters or digits",
+		"Product SKU",
 	)
 
 	nameFlag := flag.String(
@@ -25,45 +24,80 @@ func main() {
 
 	priceFlag := flag.Int64(
 		"price",
-		0,
+		12990,
 		"Unit price in kopecks",
 	)
 
 	quantityFlag := flag.Int64(
 		"quantity",
-		1,
+		3,
 		"Number of items",
 	)
 
 	flag.Parse()
 
-	product, err := catalog.NewProduct(
+	store, err := catalog.NewCatalog(2)
+
+	if err != nil {
+		return err
+	}
+
+	first, err := catalog.NewProduct(
 		*skuFlag,
 		*nameFlag,
 		*priceFlag,
 	)
 
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
+		return err
+	}
+
+	if err := store.Add(first); err != nil {
+		return err
+	}
+
+	second, err := catalog.NewProduct(
+		"TEA00001",
+		"Чай",
+		5500,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	if err := store.Add(second); err != nil {
+		return err
+	}
+
+	fmt.Printf("Products: %d\n", store.Count())
+
+	for _, product := range store.List() {
+		fmt.Printf(
+			"- %s | %s | %d kopecks\n",
+			product.SKU.String(),
+			product.Name,
+			product.UnitPriceKopecks,
+		)
 	}
 
 	total, err := pricing.CalculateLineTotal(
-		product.UnitPriceKopecks,
+		first.UnitPriceKopecks,
 		*quantityFlag,
 	)
 
 	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Order total: %d kopecks\n", total)
+
+	return nil
+}
+
+func main() {
+	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
-
-	fmt.Printf("SKU: %s\n", product.SKU.String())
-	fmt.Printf("Name: %s\n", product.Name)
-	fmt.Printf("Name bytes: %d\n", len(product.Name))
-	fmt.Printf(
-		"Name runes: %d\n",
-		utf8.RuneCountInString(product.Name),
-	)
-	fmt.Printf("Total: %d kopecks\n", total)
 }
