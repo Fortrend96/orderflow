@@ -70,6 +70,27 @@ func run() error {
 		return err
 	}
 
+	sku, err := catalog.ParseSKU(*skuFlag)
+
+	if err != nil {
+		return err
+	}
+
+	found, ok := store.Find(sku)
+
+	if !ok {
+		return fmt.Errorf(
+			"product not found: %s",
+			sku.String(),
+		)
+	}
+
+	fmt.Printf(
+		"Found: %s | %s\n",
+		found.SKU.String(),
+		found.Name,
+	)
+
 	fmt.Printf("Products: %d\n", store.Count())
 
 	for _, product := range store.List() {
@@ -82,7 +103,7 @@ func run() error {
 	}
 
 	total, err := pricing.CalculateLineTotal(
-		first.UnitPriceKopecks,
+		found.UnitPriceKopecks,
 		*quantityFlag,
 	)
 
@@ -91,6 +112,21 @@ func run() error {
 	}
 
 	fmt.Printf("Order total: %d kopecks\n", total)
+
+	if err := store.UpdatePrice(sku, 15000); err != nil {
+		return err
+	}
+
+	updated, ok := store.Find(sku)
+
+	if !ok {
+		return fmt.Errorf("updated product not found")
+	}
+
+	fmt.Printf(
+		"Updated price: %d kopecks\n",
+		updated.UnitPriceKopecks,
+	)
 
 	return nil
 }
