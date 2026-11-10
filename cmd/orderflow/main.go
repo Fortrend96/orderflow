@@ -87,8 +87,8 @@ func run() error {
 
 	fmt.Printf(
 		"Found: %s | %s\n",
-		found.SKU.String(),
-		found.Name,
+		found.SKU().String(),
+		found.Name(),
 	)
 
 	fmt.Printf("Products: %d\n", store.Count())
@@ -96,14 +96,14 @@ func run() error {
 	for _, product := range store.List() {
 		fmt.Printf(
 			"- %s | %s | %d kopecks\n",
-			product.SKU.String(),
-			product.Name,
-			product.UnitPriceKopecks,
+			product.SKU().String(),
+			product.Name(),
+			product.UnitPriceKopecks(),
 		)
 	}
 
 	total, err := pricing.CalculateLineTotal(
-		found.UnitPriceKopecks,
+		found.UnitPriceKopecks(),
 		*quantityFlag,
 	)
 
@@ -125,7 +125,12 @@ func run() error {
 
 	fmt.Printf(
 		"Updated price: %d kopecks\n",
-		updated.UnitPriceKopecks,
+		updated.UnitPriceKopecks(),
+	)
+
+	fmt.Printf(
+		"Original price: %d kopecks\n",
+		first.UnitPriceKopecks(),
 	)
 
 	return nil

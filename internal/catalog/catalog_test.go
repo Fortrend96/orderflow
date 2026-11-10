@@ -34,8 +34,10 @@ func mustCatalog(t *testing.T, capacity int) *Catalog {
 	return c
 }
 
-// requireIndexConsistent checks the catalog's internal invariant.
-func requireIndexConsistent(t *testing.T, c *Catalog) {
+func requireIndexConsistent(
+	t *testing.T,
+	c *Catalog,
+) {
 	t.Helper()
 
 	if len(c.products) != len(c.indexBySKU) {
@@ -47,12 +49,12 @@ func requireIndexConsistent(t *testing.T, c *Catalog) {
 	}
 
 	for i, p := range c.products {
-		got, ok := c.indexBySKU[p.SKU]
+		got, ok := c.indexBySKU[p.SKU()]
 
 		if !ok || got != i {
 			t.Fatalf(
 				"SKU %s: index=%d, found=%t, want=%d",
-				p.SKU,
+				p.SKU(),
 				got,
 				ok,
 				i,
@@ -85,7 +87,7 @@ func TestCatalogAddFindAndDuplicate(t *testing.T) {
 		t.Fatalf("count=%d, want 1", got)
 	}
 
-	actual, ok := c.Find(first.SKU)
+	actual, ok := c.Find(first.SKU())
 
 	if !ok || actual != first {
 		t.Fatalf(
@@ -156,22 +158,25 @@ func TestCatalogListIsIndependent(t *testing.T) {
 
 	snapshot := c.List()
 
-	snapshot[0].Name = "Изменено"
+	replacement, err := snapshot[0].WithPrice(22222)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot[0] = replacement
 
 	if err := c.Add(second); err != nil {
 		t.Fatal(err)
 	}
 
 	if len(snapshot) != 1 {
-		t.Fatalf(
-			"snapshot len=%d",
-			len(snapshot),
-		)
+		t.Fatalf("snapshot len=%d", len(snapshot))
 	}
 
-	got, ok := c.Find(first.SKU)
+	got, ok := c.Find(first.SKU())
 
-	if !ok || got.Name != "Кофе" {
+	if !ok || got.UnitPriceKopecks() != 12990 {
 		t.Fatalf(
 			"internal state changed through List: %+v",
 			got,
@@ -199,7 +204,7 @@ func TestCatalogRemoveMaintainsIndexes(t *testing.T) {
 
 	requireIndexConsistent(t, c)
 
-	if !c.Remove(products[1].SKU) {
+	if !c.Remove(products[1].SKU()) {
 		t.Fatal("remove middle failed")
 	}
 
@@ -209,7 +214,17 @@ func TestCatalogRemoveMaintainsIndexes(t *testing.T) {
 		products[3],
 	}
 
-	for i, p := range c.List() {
+	got := c.List()
+
+	if len(got) != len(expected) {
+		t.Fatalf(
+			"length=%d, want %d",
+			len(got),
+			len(expected),
+		)
+	}
+
+	for i, p := range got {
 		if p != expected[i] {
 			t.Fatalf(
 				"after middle remove index %d: %+v",
@@ -221,19 +236,19 @@ func TestCatalogRemoveMaintainsIndexes(t *testing.T) {
 
 	requireIndexConsistent(t, c)
 
-	if !c.Remove(products[0].SKU) {
+	if !c.Remove(products[0].SKU()) {
 		t.Fatal("remove first failed")
 	}
 
 	requireIndexConsistent(t, c)
 
-	if !c.Remove(products[3].SKU) {
+	if !c.Remove(products[3].SKU()) {
 		t.Fatal("remove last failed")
 	}
 
 	requireIndexConsistent(t, c)
 
-	if c.Remove(products[3].SKU) {
+	if c.Remove(products[3].SKU()) {
 		t.Fatal("second remove must return false")
 	}
 
@@ -272,7 +287,7 @@ func TestCatalogClearsRemovedTail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !c.Remove(p.SKU) {
+	if !c.Remove(p.SKU()) {
 		t.Fatal("remove failed")
 	}
 
@@ -297,13 +312,13 @@ func TestCatalogUpdatePrice(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := c.UpdatePrice(p.SKU, -10); err == nil {
+	if err := c.UpdatePrice(p.SKU(), -10); err == nil {
 		t.Fatal("expected price validation error")
 	}
 
-	got, _ := c.Find(p.SKU)
+	got, _ := c.Find(p.SKU())
 
-	if got.UnitPriceKopecks != 12990 {
+	if got.UnitPriceKopecks() != 12990 {
 		t.Fatal("price changed after invalid update")
 	}
 
@@ -320,17 +335,23 @@ func TestCatalogUpdatePrice(t *testing.T) {
 		t.Fatalf("missing SKU error=%v", err)
 	}
 
-	if err := c.UpdatePrice(p.SKU, 0); err != nil {
+	if err := c.UpdatePrice(p.SKU(), 0); err != nil {
 		t.Fatal(err)
 	}
 
-	got, ok := c.Find(p.SKU)
+	got, ok := c.Find(p.SKU())
 
-	if !ok || got.UnitPriceKopecks != 0 {
+	if !ok || got.UnitPriceKopecks() != 0 {
 		t.Fatalf(
 			"updated price=%d, found=%t",
-			got.UnitPriceKopecks,
+			got.UnitPriceKopecks(),
 			ok,
+		)
+	}
+
+	if p.UnitPriceKopecks() != 12990 {
+		t.Fatal(
+			"input product value changed through Catalog.UpdatePrice",
 		)
 	}
 
@@ -347,11 +368,11 @@ func TestCatalogZeroValue(t *testing.T) {
 		1,
 	)
 
-	if _, found := c.Find(product.SKU); found {
+	if _, found := c.Find(product.SKU()); found {
 		t.Fatal("unexpected zero value hit")
 	}
 
-	if c.Remove(product.SKU) {
+	if c.Remove(product.SKU()) {
 		t.Fatal("unexpected zero value remove")
 	}
 
@@ -359,7 +380,7 @@ func TestCatalogZeroValue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, found := c.Find(product.SKU); !found {
+	if _, found := c.Find(product.SKU()); !found {
 		t.Fatal("zero value catalog failed")
 	}
 
@@ -386,97 +407,19 @@ func TestCatalogGrows(t *testing.T) {
 	requireIndexConsistent(t, c)
 
 	for i := 0; i < 30; i++ {
-		sku, _ := ParseSKU(
+		sku, err := ParseSKU(
 			fmt.Sprintf("P%07d", i),
 		)
+
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		p, ok := c.Find(sku)
 
-		if !ok || p.UnitPriceKopecks != int64(i) {
+		if !ok ||
+			p.UnitPriceKopecks() != int64(i) {
 			t.Fatalf("cannot find %s", sku)
-		}
-	}
-}
-
-func BenchmarkCatalogFind(b *testing.B) {
-	c, err := NewCatalog(10000)
-
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	for i := 0; i < 10000; i++ {
-		p, err := NewProduct(
-			fmt.Sprintf("P%07d", i),
-			"Товар",
-			int64(i),
-		)
-
-		if err != nil {
-			b.Fatal(err)
-		}
-
-		if err := c.Add(p); err != nil {
-			b.Fatal(err)
-		}
-	}
-
-	sku, err := ParseSKU("P0009999")
-
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		_, found := c.Find(sku)
-
-		if !found {
-			b.Fatal("product not found")
-		}
-	}
-}
-
-func BenchmarkLinearFind(b *testing.B) {
-	products := make([]Product, 0, 10000)
-
-	for i := 0; i < 10000; i++ {
-		p, err := NewProduct(
-			fmt.Sprintf("P%07d", i),
-			"Товар",
-			int64(i),
-		)
-
-		if err != nil {
-			b.Fatal(err)
-		}
-
-		products = append(products, p)
-	}
-
-	sku, err := ParseSKU("P0009999")
-
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		found := false
-
-		for _, p := range products {
-			if p.SKU == sku {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			b.Fatal("product not found")
 		}
 	}
 }

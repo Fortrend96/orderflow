@@ -6,8 +6,13 @@ import (
 )
 
 var (
-	ErrProductExists   = errors.New("product already exists")
-	ErrProductNotFound = errors.New("product not found")
+	ErrProductExists = errors.New(
+		"product already exists",
+	)
+
+	ErrProductNotFound = errors.New(
+		"product not found",
+	)
 )
 
 // Catalog stores products in insertion order and indexes them by SKU.
@@ -26,16 +31,23 @@ func NewCatalog(initialCapacity int) (*Catalog, error) {
 	}
 
 	return &Catalog{
-		products:   make([]Product, 0, initialCapacity),
-		indexBySKU: make(map[SKU]int, initialCapacity),
+		products: make(
+			[]Product,
+			0,
+			initialCapacity,
+		),
+		indexBySKU: make(
+			map[SKU]int,
+			initialCapacity,
+		),
 	}, nil
 }
 
 func (c *Catalog) Add(product Product) error {
 	validated, err := NewProduct(
-		product.SKU.String(),
-		product.Name,
-		product.UnitPriceKopecks,
+		product.SKU().String(),
+		product.Name(),
+		product.UnitPriceKopecks(),
 	)
 
 	if err != nil {
@@ -45,11 +57,11 @@ func (c *Catalog) Add(product Product) error {
 		)
 	}
 
-	if _, exists := c.indexBySKU[validated.SKU]; exists {
+	if _, exists := c.indexBySKU[validated.SKU()]; exists {
 		return fmt.Errorf(
 			"%w: %s",
 			ErrProductExists,
-			validated.SKU.String(),
+			validated.SKU().String(),
 		)
 	}
 
@@ -60,7 +72,7 @@ func (c *Catalog) Add(product Product) error {
 	position := len(c.products)
 
 	c.products = append(c.products, validated)
-	c.indexBySKU[validated.SKU] = position
+	c.indexBySKU[validated.SKU()] = position
 
 	return nil
 }
@@ -75,6 +87,7 @@ func (c *Catalog) Find(sku SKU) (Product, bool) {
 	return c.products[position], true
 }
 
+// List returns a separate slice of product values.
 func (c *Catalog) List() []Product {
 	result := make([]Product, len(c.products))
 
@@ -103,24 +116,16 @@ func (c *Catalog) Remove(sku SKU) bool {
 	delete(c.indexBySKU, sku)
 
 	for i := position; i < len(c.products); i++ {
-		c.indexBySKU[c.products[i].SKU] = i
+		c.indexBySKU[c.products[i].SKU()] = i
 	}
 
 	return true
-
 }
 
 func (c *Catalog) UpdatePrice(
 	sku SKU,
 	newPriceKopecks int64,
 ) error {
-	if newPriceKopecks < 0 {
-		return fmt.Errorf(
-			"unit price must be non-negative: %d",
-			newPriceKopecks,
-		)
-	}
-
 	position, found := c.indexBySKU[sku]
 
 	if !found {
@@ -131,7 +136,19 @@ func (c *Catalog) UpdatePrice(
 		)
 	}
 
-	c.products[position].UnitPriceKopecks = newPriceKopecks
+	updated, err := c.products[position].WithPrice(
+		newPriceKopecks,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"cannot update product %s: %w",
+			sku.String(),
+			err,
+		)
+	}
+
+	c.products[position] = updated
 
 	return nil
 }

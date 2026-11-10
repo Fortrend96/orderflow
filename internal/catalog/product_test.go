@@ -175,26 +175,26 @@ func TestNewProduct(t *testing.T) {
 				return
 			}
 
-			if product.Name != tt.wantName {
+			if product.Name() != tt.wantName {
 				t.Errorf(
 					"got name %q, want %q",
-					product.Name,
+					product.Name(),
 					tt.wantName,
 				)
 			}
 
-			if product.SKU.String() != tt.sku {
+			if product.SKU().String() != tt.sku {
 				t.Errorf(
 					"got SKU %q, want %q",
-					product.SKU.String(),
+					product.SKU().String(),
 					tt.sku,
 				)
 			}
 
-			if product.UnitPriceKopecks != tt.price {
+			if product.UnitPriceKopecks() != tt.price {
 				t.Errorf(
 					"got price %d, want %d",
-					product.UnitPriceKopecks,
+					product.UnitPriceKopecks(),
 					tt.price,
 				)
 			}
@@ -224,5 +224,91 @@ func TestSKUArrayHasValueSemantics(t *testing.T) {
 			"copy is %q, want TOFFEE01",
 			copied.String(),
 		)
+	}
+}
+
+func TestProductWithPriceKeepsOriginal(t *testing.T) {
+	original, err := NewProduct(
+		"COFFEE01",
+		"Кофе",
+		12990,
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	updated, err := original.WithPrice(15000)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if original.UnitPriceKopecks() != 12990 {
+		t.Fatalf(
+			"original price changed: %d",
+			original.UnitPriceKopecks(),
+		)
+	}
+
+	if updated.UnitPriceKopecks() != 15000 ||
+		updated.Name() != original.Name() ||
+		updated.SKU() != original.SKU() {
+		t.Fatalf(
+			"updated product unexpected: %+v",
+			updated,
+		)
+	}
+
+	if _, err := original.WithPrice(-1); err == nil {
+		t.Fatal("expected error for negative price")
+	}
+}
+
+func TestInvalidZeroProductCannotBeUpdated(t *testing.T) {
+	var product Product
+
+	if _, err := product.WithPrice(100); err == nil {
+		t.Fatal(
+			"zero product must not become valid without SKU and name",
+		)
+	}
+}
+
+type ProductCard struct {
+	Product
+	Badge string
+}
+
+func TestEmbeddingPromotesMethods(t *testing.T) {
+	product, err := NewProduct(
+		"COFFEE01",
+		"Кофе",
+		12990,
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	card := ProductCard{
+		Product: product,
+		Badge:   "Featured",
+	}
+
+	if card.Name() != "Кофе" ||
+		card.Product.Name() != "Кофе" {
+		t.Fatal("embedded Product method was not promoted")
+	}
+
+	changed, err := card.WithPrice(15000)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if changed.UnitPriceKopecks() != 15000 ||
+		card.UnitPriceKopecks() != 12990 {
+		t.Fatal("embedded Product value unexpectedly mutated")
 	}
 }
