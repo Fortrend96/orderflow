@@ -6,24 +6,37 @@ import (
 	"math"
 )
 
+var (
+	ErrInvalidUnitPrice = errors.New("invalid unit price")
+	ErrInvalidQuantity  = errors.New("invalid quantity")
+	ErrTotalOverflow    = errors.New("total price overflow")
+)
+
 // CalculateLineTotal returns the total price in kopecks for an order line.
 func CalculateLineTotal(unitPrice int64, quantity int64) (int64, error) {
 	if unitPrice < 0 {
 		return 0, fmt.Errorf(
-			"unit price must be non-negative: %d",
+			"%w: got %d",
+			ErrInvalidUnitPrice,
 			unitPrice,
 		)
 	}
 
 	if quantity <= 0 {
 		return 0, fmt.Errorf(
-			"quantity must be positive: %d",
+			"%w: expected positive value, got %d",
+			ErrInvalidQuantity,
 			quantity,
 		)
 	}
 
 	if unitPrice > math.MaxInt64/quantity {
-		return 0, fmt.Errorf("total price overflows int64")
+		return 0, fmt.Errorf(
+			"%w: unit price=%d, quantity=%d",
+			ErrTotalOverflow,
+			unitPrice,
+			quantity,
+		)
 	}
 
 	return unitPrice * quantity, nil

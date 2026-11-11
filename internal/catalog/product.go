@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -10,6 +11,13 @@ const (
 	skuLength    = 8
 	minNameRunes = 2
 	maxNameRunes = 80
+)
+
+// Sentinel errors describe validation failures independent of error text.
+var (
+	ErrInvalidSKU   = errors.New("invalid SKU")
+	ErrInvalidName  = errors.New("invalid product name")
+	ErrInvalidPrice = errors.New("invalid product price")
 )
 
 type SKU [skuLength]byte
@@ -77,18 +85,21 @@ func NewProduct(
 	name := strings.TrimSpace(rawName)
 	nameRunes := utf8.RuneCountInString(name)
 
-	if nameRunes < minNameRunes ||
-		nameRunes > maxNameRunes {
+	if nameRunes < minNameRunes || nameRunes > maxNameRunes {
 		return Product{}, fmt.Errorf(
-			"product name must contain %d..%d Unicode code points",
+			"%w: expected %d..%d Unicode code points, got %d",
+			ErrInvalidName,
 			minNameRunes,
 			maxNameRunes,
+			nameRunes,
 		)
 	}
 
 	if unitPriceKopecks < 0 {
 		return Product{}, fmt.Errorf(
-			"unit price must be non-negative",
+			"%w: got %d",
+			ErrInvalidPrice,
+			unitPriceKopecks,
 		)
 	}
 
@@ -112,9 +123,7 @@ func (p Product) UnitPriceKopecks() int64 {
 }
 
 // WithPrice returns a validated product copy with a different unit price.
-func (p Product) WithPrice(
-	newPriceKopecks int64,
-) (Product, error) {
+func (p Product) WithPrice(newPriceKopecks int64) (Product, error) {
 	return NewProduct(
 		p.sku.String(),
 		p.name,
