@@ -4,7 +4,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 
 	"github.com/Fortrend96/orderflow/internal/catalog"
 	"github.com/Fortrend96/orderflow/internal/catalogcsv"
@@ -66,6 +68,14 @@ func run() error {
 		)
 	}
 	fmt.Printf("Order total: %d kopecks\n", quote.TotalKopecks)
+
+	// Reusable generic algorithms provide reporting without changing SKU indexing.
+	groups := store.PriceGroups()
+	prices := slices.Sorted(maps.Keys(groups))
+	for _, price := range prices {
+		fmt.Printf("Price group %d kopecks: %d product(s)\n", price, len(groups[price]))
+	}
+	fmt.Printf("Distinct names: %v\n", store.DistinctNames())
 
 	if *exportFlag != "" {
 		if err := catalogcsv.ExportFile(*exportFlag, store.List()); err != nil {
