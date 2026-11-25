@@ -5,16 +5,26 @@ import "github.com/Fortrend96/orderflow/internal/collections"
 // PriceGroups returns independent groups of products by price in kopecks.
 // Products inside each group retain insertion order. Map key order is undefined.
 func (c *Catalog) PriceGroups() map[int64][]Product {
-	return collections.GroupBy(c.products, Product.UnitPriceKopecks)
+	return collections.GroupBy(
+		c.products,
+		Product.UnitPriceKopecks,
+	)
 }
 
-// DistinctNames returns names in the order of their first appearance.
-// Products with the same name but different SKUs contribute only one name.
+// DistinctNames returns product names in first-appearance order.
+// It avoids allocating an intermediate []Product slice.
 func (c *Catalog) DistinctNames() []string {
-	unique := collections.UniqueBy(c.products, Product.Name)
-	names := make([]string, 0, len(unique))
-	for _, product := range unique {
-		names = append(names, product.Name())
+	names := make([]string, 0, len(c.products))
+
+	var seen collections.Set[string]
+
+	for _, product := range c.products {
+		name := product.Name()
+
+		if seen.Add(name) {
+			names = append(names, name)
+		}
 	}
+
 	return names
 }

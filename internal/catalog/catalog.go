@@ -8,6 +8,7 @@ import (
 var (
 	ErrProductExists   = errors.New("product already exists")
 	ErrProductNotFound = errors.New("product not found")
+	ErrInvalidCapacity = errors.New("invalid catalog capacity")
 )
 
 // Catalog stores products in insertion order and indexes them by SKU.
@@ -20,7 +21,8 @@ type Catalog struct {
 func NewCatalog(initialCapacity int) (*Catalog, error) {
 	if initialCapacity < 0 {
 		return nil, fmt.Errorf(
-			"initial capacity must be non-negative: %d",
+			"%w: initial capacity must be non-negative, got %d",
+			ErrInvalidCapacity,
 			initialCapacity,
 		)
 	}
@@ -37,13 +39,16 @@ func (c *Catalog) Add(product Product) error {
 		product.Name(),
 		product.UnitPriceKopecks(),
 	)
-
 	if err != nil {
 		return fmt.Errorf("invalid product: %w", err)
 	}
 
 	if _, exists := c.indexBySKU[validated.SKU()]; exists {
-		return fmt.Errorf("%w: %s", ErrProductExists, validated.SKU().String())
+		return fmt.Errorf(
+			"%w: %s",
+			ErrProductExists,
+			validated.SKU().String(),
+		)
 	}
 
 	if c.indexBySKU == nil {
@@ -51,29 +56,23 @@ func (c *Catalog) Add(product Product) error {
 	}
 
 	position := len(c.products)
-
 	c.products = append(c.products, validated)
 	c.indexBySKU[validated.SKU()] = position
-
 	return nil
 }
 
 func (c *Catalog) Find(sku SKU) (Product, bool) {
 	position, found := c.indexBySKU[sku]
-
 	if !found {
 		return Product{}, false
 	}
-
 	return c.products[position], true
 }
 
 // List returns a separate slice of product values.
 func (c *Catalog) List() []Product {
 	result := make([]Product, len(c.products))
-
 	copy(result, c.products)
-
 	return result
 }
 
@@ -87,7 +86,6 @@ func (c *Catalog) Clone() *Catalog {
 	}
 
 	copy(clone.products, c.products)
-
 	for i, product := range clone.products {
 		clone.indexBySKU[product.SKU()] = i
 	}
@@ -97,7 +95,6 @@ func (c *Catalog) Clone() *Catalog {
 
 func (c *Catalog) Remove(sku SKU) bool {
 	position, found := c.indexBySKU[sku]
-
 	if !found {
 		return false
 	}
@@ -105,12 +102,10 @@ func (c *Catalog) Remove(sku SKU) bool {
 	copy(c.products[position:], c.products[position+1:])
 
 	last := len(c.products) - 1
-
 	c.products[last] = Product{}
 	c.products = c.products[:last]
 
 	delete(c.indexBySKU, sku)
-
 	for i := position; i < len(c.products); i++ {
 		c.indexBySKU[c.products[i].SKU()] = i
 	}
@@ -118,21 +113,29 @@ func (c *Catalog) Remove(sku SKU) bool {
 	return true
 }
 
-func (c *Catalog) UpdatePrice(sku SKU, newPriceKopecks int64) error {
+func (c *Catalog) UpdatePrice(
+	sku SKU,
+	newPriceKopecks int64,
+) error {
 	position, found := c.indexBySKU[sku]
-
 	if !found {
-		return fmt.Errorf("%w: %s", ErrProductNotFound, sku.String())
+		return fmt.Errorf(
+			"%w: %s",
+			ErrProductNotFound,
+			sku.String(),
+		)
 	}
 
 	updated, err := c.products[position].WithPrice(newPriceKopecks)
-
 	if err != nil {
-		return fmt.Errorf("cannot update product %s: %w", sku.String(), err)
+		return fmt.Errorf(
+			"cannot update product %s: %w",
+			sku.String(),
+			err,
+		)
 	}
 
 	c.products[position] = updated
-
 	return nil
 }
 
