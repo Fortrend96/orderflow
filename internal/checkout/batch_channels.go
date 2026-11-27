@@ -36,52 +36,100 @@ func (s *Service) QuoteBatchChannels(lines []LineRequest, workers, buffer int) (
 	}
 	workers = min(workers, len(lines))
 	buffer = min(buffer, len(lines))
-	jobs := make(chan quoteJob, buffer)
-	results := make(chan quoteResult, buffer)
 
-	var wg sync.WaitGroup
-	wg.Add(workers + 1)
-	go func() {
-		defer wg.Done()
-		sendQuoteJobs(lines, jobs)
-	}()
-	for i := 0; i < workers; i++ {
-		go func() {
-			defer wg.Done()
-			s.processQuoteJobs(jobs, results)
-		}()
-	}
+	// nil отключает остановку: публичный метод обрабатывает весь пакет.
+	results := s.streamQuoteResults(lines, workers, buffer, nil)
 
 	// Только вызывающая goroutine записывает в итоговый slice.
 	firstErrorIndex := len(lines)
 	var firstError error
-	for i := 0; i < len(lines); i++ {
-		result := <-results
+
+	for result := range results {
 		quotes[result.index] = result.quote
 		if result.err != nil && result.index < firstErrorIndex {
 			firstErrorIndex = result.index
 			firstError = result.err
 		}
 	}
-	wg.Wait()
+
 	if firstError != nil {
 		return nil, fmt.Errorf("line %d: %w", firstErrorIndex, firstError)
 	}
+
 	return quotes, nil
 }
 
-// sendQuoteJobs — единственный отправитель и владелец закрытия jobs.
-func sendQuoteJobs(lines []LineRequest, jobs chan<- quoteJob) {
+// streamQuoteResults запускает поток. workers > 0, buffer >= 0.
+// Получатель читает до закрытия либо закрывает stop и ждёт закрытия results.
+// Stop не прерывает уже выполняющийся Find.
+func (s *Service) streamQuoteResults(lines []LineRequest, workers, buffer int, stop <-chan struct{}) <-chan quoteResult {
+	jobs := make(chan quoteJob, buffer)
+	results := make(chan quoteResult, buffer)
+
+	var wg sync.WaitGroup
+	wg.Add(workers + 1)
+
+	go func() {
+		defer wg.Done()
+		sendQuoteJobs(lines, jobs, stop)
+	}()
+
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			s.processQuoteJobs(jobs, results, stop)
+		}()
+	}
+
+	// Единственный владелец закрытия results ждёт всех отправителей.
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	return results
+}
+
+func sendQuoteJobs(lines []LineRequest, jobs chan<- quoteJob, stop <-chan struct{}) {
 	defer close(jobs)
+
 	for i, line := range lines {
-		jobs <- quoteJob{index: i, line: line}
+		select {
+		case <-stop:
+			return
+
+		case jobs <- quoteJob{index: i, line: line}:
+		}
 	}
 }
 
-// processQuoteJobs получает задания и отправляет ровно один результат на задание.
-func (s *Service) processQuoteJobs(jobs <-chan quoteJob, results chan<- quoteResult) {
-	for job := range jobs {
-		quote, err := s.Quote(job.line.SKU, job.line.Quantity)
-		results <- quoteResult{index: job.index, quote: quote, err: err}
+func (s *Service) processQuoteJobs(jobs <-chan quoteJob, results chan<- quoteResult, stop <-chan struct{}) {
+	for {
+		// Не начинаем следующую итерацию, если остановка уже запрошена.
+		select {
+		case <-stop:
+			return
+
+		default:
+		}
+
+		select {
+		case <-stop:
+			return
+
+		case job, ok := <-jobs:
+			if !ok {
+				return
+			}
+
+			quote, err := s.Quote(job.line.SKU, job.line.Quantity)
+
+			select {
+			case <-stop:
+				return
+
+			case results <- quoteResult{index: job.index, quote: quote, err: err}:
+			}
+		}
 	}
 }
